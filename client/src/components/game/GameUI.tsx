@@ -24,6 +24,7 @@ export function GameUI() {
     setShowWoodSupports,
     isNightMode,
     setIsNightMode,
+    createLoopAtPoint,
   } = useRollerCoaster();
   
   const [position, setPosition] = useState({ x: 8, y: 8 });
@@ -146,14 +147,24 @@ export function GameUI() {
               </Button>
               
               {selectedPointId && (
-                <Button
-                  size="sm"
-                  onClick={() => removeTrackPoint(selectedPointId)}
-                  variant="outline"
-                  className="h-6 text-[10px] px-2 border-red-500 text-red-500 hover:bg-red-500/20"
-                >
-                  Delete Pt
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() => createLoopAtPoint(selectedPointId)}
+                    className="h-6 text-[10px] px-2 bg-pink-600 hover:bg-pink-700"
+                  >
+                    Add Loop
+                  </Button>
+                  
+                  <Button
+                    size="sm"
+                    onClick={() => removeTrackPoint(selectedPointId)}
+                    variant="outline"
+                    className="h-6 text-[10px] px-2 border-red-500 text-red-500 hover:bg-red-500/20"
+                  >
+                    Delete Pt
+                  </Button>
+                </>
               )}
             </div>
             
