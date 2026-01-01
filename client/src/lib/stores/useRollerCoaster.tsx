@@ -112,50 +112,45 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
   createLoopAtPoint: (id) => {
     set((state) => {
       const pointIndex = state.trackPoints.findIndex((p) => p.id === id);
-      if (pointIndex === -1 || pointIndex >= state.trackPoints.length - 1) return state;
+      if (pointIndex === -1) return state;
       
       const entryPoint = state.trackPoints[pointIndex];
-      const exitPoint = state.trackPoints[pointIndex + 1];
       const entryPos = entryPoint.position.clone();
-      const exitPos = exitPoint.position.clone();
       
-      // Calculate forward direction from entry to exit
-      const segment = exitPos.clone().sub(entryPos);
-      let forward = segment.clone();
-      forward.y = 0;
-      if (forward.length() < 0.1) {
-        forward = new THREE.Vector3(1, 0, 0);
+      // Calculate forward direction from track
+      let forward = new THREE.Vector3(1, 0, 0);
+      if (pointIndex > 0) {
+        const prevPoint = state.trackPoints[pointIndex - 1];
+        forward = entryPos.clone().sub(prevPoint.position);
+        forward.y = 0;
+        if (forward.length() < 0.1) {
+          forward = new THREE.Vector3(1, 0, 0);
+        }
+        forward.normalize();
       }
-      forward.normalize();
       
-      // Loop parameters
       const loopRadius = 8;
-      const arcPoints = 12;
-      
-      // Loop center is midway between entry and exit, at loopRadius height
-      const midX = (entryPos.x + exitPos.x) / 2;
-      const midZ = (entryPos.z + exitPos.z) / 2;
-      const baseY = Math.min(entryPos.y, exitPos.y);
-      const loopCenterY = baseY + loopRadius;
-      
-      // Generate loop arc points
-      // Start at entry (back of loop), go up, over top (upside down), down to exit (front)
+      const numPoints = 10;
       const loopPoints: TrackPoint[] = [];
       
-      for (let i = 1; i < arcPoints; i++) {
-        const t = i / arcPoints;
-        // Angle goes from -PI/2 (back/entry) through PI/2 (top) to 3PI/2 (front/exit)
-        const angle = -Math.PI / 2 + t * Math.PI * 2;
+      // Loop path using θ from 0 to 2π:
+      // forwardOffset = sin(θ) * radius → goes away from entry (far side) then back
+      // verticalOffset = (1 - cos(θ)) * radius → 0 at start, 2*radius at top, 0 at end
+      // 
+      // Path: entry → forward to far side while rising → over top → back toward entry while descending → back at entry level
+      
+      for (let i = 1; i < numPoints; i++) {
+        const t = i / numPoints;
+        const theta = t * Math.PI * 2;
         
-        // sin: -1 at entry, 0 at sides, +1 at exit
-        const forwardT = (Math.sin(angle) + 1) / 2; // 0 to 1
-        // cos: 0 at entry/exit, 1 at top
-        const heightOffset = Math.cos(angle) * loopRadius;
+        // sin(θ): 0→1→0→-1→0 (forward away, then back behind, then return)
+        const forwardOffset = Math.sin(theta) * loopRadius;
+        // (1-cos(θ)): 0→1→2→1→0 scaled by radius (height curve)
+        const verticalOffset = (1 - Math.cos(theta)) * loopRadius;
         
-        // Interpolate X and Z between entry and exit based on forward progress
-        const x = entryPos.x + (exitPos.x - entryPos.x) * forwardT;
-        const z = entryPos.z + (exitPos.z - entryPos.z) * forwardT;
-        const y = loopCenterY + heightOffset;
+        const x = entryPos.x + forward.x * forwardOffset;
+        const y = entryPos.y + verticalOffset;
+        const z = entryPos.z + forward.z * forwardOffset;
         
         loopPoints.push({
           id: `point-${++pointCounter}`,
@@ -164,8 +159,7 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         });
       }
       
-      // Combine: points before entry + entry + loop arc + exit + points after exit
-      // We keep the entry and exit points, inserting the loop between them
+      // Insert loop points after the entry point
       const newTrackPoints = [
         ...state.trackPoints.slice(0, pointIndex + 1),
         ...loopPoints,
