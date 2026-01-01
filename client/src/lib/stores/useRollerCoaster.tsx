@@ -131,14 +131,15 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
       
       const loopRadius = 8;
       const numPoints = 20; // More points for smoother curve
-      const leadOut = 4; // Lead-out distance for smooth transition
+      const leadOut = 6; // Lead-out distance for smooth exit transition
+      const totalLoopLength = loopRadius + leadOut; // Total forward shift needed for downstream points
       const loopPoints: TrackPoint[] = [];
       
       // Loop path using θ from 0 to 2π:
       // forwardOffset = sin(θ) * radius → goes away from entry (far side) then back
       // verticalOffset = (1 - cos(θ)) * radius → 0 at start, 2*radius at top, 0 at end
       // 
-      // Path: entry → forward to far side while rising → over top → back toward entry while descending → back at entry level
+      // Path: entry → forward to far side while rising → over top → back toward entry while descending → exit ahead
       
       for (let i = 1; i <= numPoints; i++) {
         const t = i / numPoints;
@@ -150,7 +151,7 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         const verticalOffset = (1 - Math.cos(theta)) * loopRadius;
         
         // Add gradual forward motion to prevent backtracking at end
-        // This spreads the loop slightly forward so exit is ahead of entry
+        // This spreads the loop forward so exit is ahead of entry
         const progressiveForward = t * leadOut;
         
         const x = entryPos.x + forward.x * (forwardOffset + progressiveForward);
@@ -164,11 +165,21 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         });
       }
       
-      // Insert loop points after the entry point
+      // Shift all downstream points forward to make room for the loop
+      const shiftedDownstreamPoints = state.trackPoints.slice(pointIndex + 1).map(p => ({
+        ...p,
+        position: new THREE.Vector3(
+          p.position.x + forward.x * totalLoopLength,
+          p.position.y,
+          p.position.z + forward.z * totalLoopLength
+        )
+      }));
+      
+      // Combine: original up to entry + loop + shifted remainder
       const newTrackPoints = [
         ...state.trackPoints.slice(0, pointIndex + 1),
         ...loopPoints,
-        ...state.trackPoints.slice(pointIndex + 1)
+        ...shiftedDownstreamPoints
       ];
       
       return { trackPoints: newTrackPoints };
