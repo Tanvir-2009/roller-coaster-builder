@@ -162,10 +162,13 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         const y = entryPos.y + verticalOffset;
         const z = entryPos.z + forward.z * forwardOffset + right.z * lateralOffset;
         
+        // Tilt follows the loop angle: 0° at entry, 180° at top, 360°(=0°) at exit
+        const tiltDegrees = THREE.MathUtils.radToDeg(theta) % 360;
+        
         loopPoints.push({
           id: `point-${++pointCounter}`,
           position: new THREE.Vector3(x, y, z),
-          tilt: 0
+          tilt: tiltDegrees
         });
       }
       
