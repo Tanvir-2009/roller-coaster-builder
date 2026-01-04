@@ -182,61 +182,26 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         });
       }
       
-      // Two-segment Hermite exit: preserves original Catmull-Rom tangents at both
-      // nextPoint AND afterNextPoint to completely eliminate the knot
+      // Simple linear interpolation - let Catmull-Rom handle the smoothing naturally
+      // Just like how manually placed points work
       const transitionPoints: TrackPoint[] = [];
       const loopExitPos = loopPoints[loopPoints.length - 1].position.clone();
       
-      // Hermite basis functions
-      const hermite = (t: number, P0: THREE.Vector3, P1: THREE.Vector3, D0: THREE.Vector3, D1: THREE.Vector3) => {
-        const t2 = t * t;
-        const t3 = t2 * t;
-        
-        const h00 = 2*t3 - 3*t2 + 1;
-        const h10 = t3 - 2*t2 + t;
-        const h01 = -2*t3 + 3*t2;
-        const h11 = t3 - t2;
-        
-        return new THREE.Vector3(
-          h00 * P0.x + h10 * D0.x + h01 * P1.x + h11 * D1.x,
-          h00 * P0.y + h10 * D0.y + h01 * P1.y + h11 * D1.y,
-          h00 * P0.z + h10 * D0.z + h01 * P1.z + h11 * D1.z
-        );
-      };
-      
       if (nextPoint) {
         const nextPos = nextPoint.position.clone();
-        const afterNextPoint = state.trackPoints[pointIndex + 2];
-        const afterAfterPoint = state.trackPoints[pointIndex + 3];
+        const numTransitionPoints = 4;
         
-        // Compute exit tangent from loop (last two loop points)
-        const prevLoopPoint = loopPoints[loopPoints.length - 2].position;
-        const loopExitTangent = loopExitPos.clone().sub(prevLoopPoint).normalize();
-        
-        // Compute ORIGINAL Catmull-Rom tangent at nextPoint: ½(afterNext - entry)
-        // This is what the legacy track expected before the loop was inserted
-        const originalNextTangent = afterNextPoint 
-          ? afterNextPoint.position.clone().sub(entryPos).multiplyScalar(0.5)
-          : nextPos.clone().sub(loopExitPos);
-        
-        // SEGMENT 1: loopExit → nextPoint
-        const chord1 = loopExitPos.distanceTo(nextPos);
-        const D0_seg1 = loopExitTangent.clone().multiplyScalar(chord1);
-        const D1_seg1 = originalNextTangent.clone().normalize().multiplyScalar(chord1);
-        
-        // Sample segment 1 (3 points between loopExit and nextPoint)
-        for (let i = 1; i <= 3; i++) {
-          const t = i / 4;
-          const transPos = hermite(t, loopExitPos, nextPos, D0_seg1, D1_seg1);
+        // Simple evenly-spaced linear interpolation from loop exit to next point
+        for (let i = 1; i <= numTransitionPoints; i++) {
+          const t = i / (numTransitionPoints + 1);
+          const transPos = loopExitPos.clone().lerp(nextPos, t);
+          
           transitionPoints.push({
             id: `point-${++pointCounter}`,
             position: transPos,
             tilt: 0
           });
         }
-        
-        // No segment 2 needed - the Catmull-Rom spline handles the rest naturally
-        // Adding more points before the legacy track would create a zig-zag
       }
       
       // Combine: original up to entry + loop + transitions + original remainder (unchanged)
