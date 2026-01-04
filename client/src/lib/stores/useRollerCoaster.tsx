@@ -182,39 +182,32 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         });
       }
       
-      // Straight exit that tapers lateral offset back to centerline
+      // Simple straight exit: just go forward from where the loop ends
+      // No lateral adjustment - let the user's next track point handle reconnection
       const loopExitPos = loopPoints[loopPoints.length - 1].position.clone();
-      const straightSpacing = 4;
-      const numStraightPoints = 4;
-      
-      // Calculate centerline position (where track would be without lateral offset)
-      const centerlineExitPos = entryPos.clone();
+      const straightSpacing = 5;
+      const numStraightPoints = 3;
       
       const straightExitPoints: TrackPoint[] = [];
       for (let i = 1; i <= numStraightPoints; i++) {
-        const t = i / numStraightPoints; // 0 to 1
-        const lateralFade = 1 - t; // Fades from 1 to 0
-        
-        // Start from loop exit lateral position, fade back to centerline
-        const lateralOffset = helixSeparation * lateralFade;
-        
         straightExitPoints.push({
           id: `point-${++pointCounter}`,
           position: new THREE.Vector3(
-            centerlineExitPos.x + forward.x * straightSpacing * i + right.x * lateralOffset,
+            loopExitPos.x + forward.x * straightSpacing * i,
             entryPos.y,
-            centerlineExitPos.z + forward.z * straightSpacing * i + right.z * lateralOffset
+            loopExitPos.z + forward.z * straightSpacing * i
           ),
           tilt: 0
         });
       }
       
-      // Combine: original up to entry + loop + straight exit + original remainder
+      // IMPORTANT: Don't include original next points - they would create the hook
+      // User can add their own points after the loop exit
       const newTrackPoints = [
         ...state.trackPoints.slice(0, pointIndex + 1),
         ...loopPoints,
-        ...straightExitPoints,
-        ...state.trackPoints.slice(pointIndex + 1)
+        ...straightExitPoints
+        // Deliberately NOT including: ...state.trackPoints.slice(pointIndex + 1)
       ];
       
       return { trackPoints: newTrackPoints };
