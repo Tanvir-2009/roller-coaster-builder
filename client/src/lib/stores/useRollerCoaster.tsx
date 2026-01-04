@@ -182,66 +182,82 @@ export const useRollerCoaster = create<RollerCoasterState>((set, get) => ({
         });
       }
       
-      // Exit transition using cubic Hermite to ensure tangent continuity
-      // This guarantees the track arrives at nextPoint with the correct heading
+      // Two-segment Hermite exit: preserves original Catmull-Rom tangents at both
+      // nextPoint AND afterNextPoint to completely eliminate the knot
       const transitionPoints: TrackPoint[] = [];
       const loopExitPos = loopPoints[loopPoints.length - 1].position.clone();
       
+      // Hermite basis functions
+      const hermite = (t: number, P0: THREE.Vector3, P1: THREE.Vector3, D0: THREE.Vector3, D1: THREE.Vector3) => {
+        const t2 = t * t;
+        const t3 = t2 * t;
+        
+        const h00 = 2*t3 - 3*t2 + 1;
+        const h10 = t3 - 2*t2 + t;
+        const h01 = -2*t3 + 3*t2;
+        const h11 = t3 - t2;
+        
+        return new THREE.Vector3(
+          h00 * P0.x + h10 * D0.x + h01 * P1.x + h11 * D1.x,
+          h00 * P0.y + h10 * D0.y + h01 * P1.y + h11 * D1.y,
+          h00 * P0.z + h10 * D0.z + h01 * P1.z + h11 * D1.z
+        );
+      };
+      
       if (nextPoint) {
         const nextPos = nextPoint.position.clone();
-        const numTransitionPoints = 5;
+        const afterNextPoint = state.trackPoints[pointIndex + 2];
+        const afterAfterPoint = state.trackPoints[pointIndex + 3];
         
         // Compute exit tangent from loop (last two loop points)
         const prevLoopPoint = loopPoints[loopPoints.length - 2].position;
         const loopExitTangent = loopExitPos.clone().sub(prevLoopPoint).normalize();
         
-        // Compute legacy tangent at nextPoint (from nextPoint toward the point after it)
-        const afterNextPoint = state.trackPoints[pointIndex + 2];
-        let legacyTangent: THREE.Vector3;
-        if (afterNextPoint) {
-          legacyTangent = afterNextPoint.position.clone().sub(nextPos).normalize();
-        } else {
-          // Fallback: use direction from loop exit to next point
-          legacyTangent = nextPos.clone().sub(loopExitPos).normalize();
-        }
+        // Compute ORIGINAL Catmull-Rom tangent at nextPoint: ½(afterNext - entry)
+        // This is what the legacy track expected before the loop was inserted
+        const originalNextTangent = afterNextPoint 
+          ? afterNextPoint.position.clone().sub(entryPos).multiplyScalar(0.5)
+          : nextPos.clone().sub(loopExitPos);
         
-        // Chord length for scaling tangents
-        const chordLength = loopExitPos.distanceTo(nextPos);
-        const tangentScale = chordLength * 0.5; // Scale factor for Hermite derivatives
+        // SEGMENT 1: loopExit → nextPoint
+        const chord1 = loopExitPos.distanceTo(nextPos);
+        const D0_seg1 = loopExitTangent.clone().multiplyScalar(chord1);
+        const D1_seg1 = originalNextTangent.clone().normalize().multiplyScalar(chord1);
         
-        // Hermite basis functions
-        // H(t) = (2t³-3t²+1)P0 + (-2t³+3t²)P1 + (t³-2t²+t)D0 + (t³-t²)D1
-        const hermite = (t: number, P0: THREE.Vector3, P1: THREE.Vector3, D0: THREE.Vector3, D1: THREE.Vector3) => {
-          const t2 = t * t;
-          const t3 = t2 * t;
-          
-          const h00 = 2*t3 - 3*t2 + 1;
-          const h10 = t3 - 2*t2 + t;
-          const h01 = -2*t3 + 3*t2;
-          const h11 = t3 - t2;
-          
-          return new THREE.Vector3(
-            h00 * P0.x + h10 * D0.x + h01 * P1.x + h11 * D1.x,
-            h00 * P0.y + h10 * D0.y + h01 * P1.y + h11 * D1.y,
-            h00 * P0.z + h10 * D0.z + h01 * P1.z + h11 * D1.z
-          );
-        };
-        
-        // Scale tangents by chord length
-        const D0 = loopExitTangent.clone().multiplyScalar(tangentScale);
-        const D1 = legacyTangent.clone().multiplyScalar(tangentScale);
-        
-        for (let i = 1; i <= numTransitionPoints; i++) {
-          const t = i / (numTransitionPoints + 1);
-          
-          // Sample the Hermite curve
-          const transPos = hermite(t, loopExitPos, nextPos, D0, D1);
-          
+        // Sample segment 1 (3 points between loopExit and nextPoint)
+        for (let i = 1; i <= 3; i++) {
+          const t = i / 4;
+          const transPos = hermite(t, loopExitPos, nextPos, D0_seg1, D1_seg1);
           transitionPoints.push({
             id: `point-${++pointCounter}`,
             position: transPos,
             tilt: 0
           });
+        }
+        
+        // SEGMENT 2: nextPoint → afterNextPoint (if exists)
+        // This ensures the legacy track receives the correct incoming derivative
+        if (afterNextPoint && afterAfterPoint) {
+          const afterNextPos = afterNextPoint.position.clone();
+          const afterAfterPos = afterAfterPoint.position.clone();
+          
+          // Original Catmull tangent at afterNext: ½(afterAfter - nextPoint)
+          const originalAfterNextTangent = afterAfterPos.clone().sub(nextPos).multiplyScalar(0.5);
+          
+          const chord2 = nextPos.distanceTo(afterNextPos);
+          const D0_seg2 = originalNextTangent.clone().normalize().multiplyScalar(chord2);
+          const D1_seg2 = originalAfterNextTangent.clone().normalize().multiplyScalar(chord2);
+          
+          // Sample segment 2 (2 points between nextPoint and afterNextPoint)
+          for (let i = 1; i <= 2; i++) {
+            const t = i / 3;
+            const transPos = hermite(t, nextPos, afterNextPos, D0_seg2, D1_seg2);
+            transitionPoints.push({
+              id: `point-${++pointCounter}`,
+              position: transPos,
+              tilt: 0
+            });
+          }
         }
       }
       
