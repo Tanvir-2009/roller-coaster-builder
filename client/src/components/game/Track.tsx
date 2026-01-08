@@ -111,6 +111,20 @@ export function Track() {
     const numTrackPoints = trackPoints.length;
     const totalSplineSegments = isLooped ? numTrackPoints : numTrackPoints - 1;
     
+    // Pre-calculate total rollOffset from all loop elements
+    // For closed tracks, we need to know the total offset to distribute compensation
+    let totalLoopOffset = new THREE.Vector3(0, 0, 0);
+    if (isLooped) {
+      for (let i = 0; i < numTrackPoints; i++) {
+        const loopSeg = loopMap.get(trackPoints[i].id);
+        if (loopSeg) {
+          const splineT = i / totalSplineSegments;
+          const forward = baseSpline.getTangent(splineT).normalize();
+          totalLoopOffset.addScaledVector(forward, loopSeg.pitch);
+        }
+      }
+    }
+    
     let prevTangent = baseSpline.getTangent(0).normalize();
     let prevUp = new THREE.Vector3(0, 1, 0);
     const initDot = prevUp.dot(prevTangent);
@@ -130,7 +144,11 @@ export function Track() {
       
       if (loopSeg) {
         const splineT = pointIdx / totalSplineSegments;
-        const entryPos = baseSpline.getPoint(splineT).add(rollOffset.clone());
+        // Apply progressive compensation for closed tracks
+        const loopCompensation = isLooped 
+          ? totalLoopOffset.clone().multiplyScalar(-splineT)
+          : new THREE.Vector3(0, 0, 0);
+        const entryPos = baseSpline.getPoint(splineT).add(rollOffset.clone()).add(loopCompensation);
         const splineTangent = baseSpline.getTangent(splineT).normalize();
         
         const forward = splineTangent.clone();
@@ -200,7 +218,13 @@ export function Track() {
         const localT = s / numSamplesPerSegment;
         const globalT = (pointIdx + localT) / totalSplineSegments;
         
-        const point = baseSpline.getPoint(globalT).add(rollOffset.clone());
+        // For closed tracks, apply progressive compensation to close the loop
+        // This subtracts a portion of the total loop offset based on progress
+        const compensation = isLooped 
+          ? totalLoopOffset.clone().multiplyScalar(-globalT)
+          : new THREE.Vector3(0, 0, 0);
+        
+        const point = baseSpline.getPoint(globalT).add(rollOffset.clone()).add(compensation);
         const tangent = baseSpline.getTangent(globalT).normalize();
         const tilt = interpolateTilt(trackPoints, globalT, isLooped);
         
@@ -250,6 +274,19 @@ export function Track() {
         normal: new THREE.Vector3().crossVectors(lastTangent, prevUp).normalize(),
         up: prevUp.clone(),
         tilt: lastTilt
+      });
+    }
+    
+    // For closed tracks, add a closing point that matches the first point
+    if (isLooped && railData.length > 0) {
+      // Add the first sample again to close the loop visually
+      const firstSample = railData[0];
+      railData.push({
+        point: firstSample.point.clone(),
+        tangent: firstSample.tangent.clone(),
+        normal: firstSample.normal.clone(),
+        up: firstSample.up.clone(),
+        tilt: firstSample.tilt
       });
     }
     
