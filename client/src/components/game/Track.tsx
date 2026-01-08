@@ -38,7 +38,8 @@ interface BarrelRollFrame {
   pitch: number;
 }
 
-// Vertical loop: track goes in a vertical circle in the forward-up plane
+// Vertical loop with corkscrew offset: track goes in a vertical circle but with
+// lateral offset to prevent self-intersection at the bottom
 // Rider goes upside down at the top (θ=π), loop is perpendicular to track direction
 // θ(t) = 2π * (t - sin(2πt)/(2π)) ensures zero angular velocity at endpoints for C1 continuity
 function sampleVerticalLoopAnalytically(
@@ -49,24 +50,29 @@ function sampleVerticalLoopAnalytically(
   
   const twoPi = Math.PI * 2;
   
+  // Corkscrew offset: separates ascending and descending parts of the loop
+  // sin(θ) is positive going up, negative coming down
+  const corkscrewOffset = radius * 0.4;  // 40% of radius for comfortable separation
+  
   // Eased theta: starts and ends with zero angular velocity
   const theta = twoPi * (t - Math.sin(twoPi * t) / twoPi);
   const dThetaDt = twoPi * (1 - Math.cos(twoPi * t));
   
-  // Vertical loop in forward-up plane:
-  // - forward component: radius*sin(θ) creates the forward/backward motion
-  // - up component: radius*(1-cos(θ)) creates the vertical motion (always >= 0)
-  // - pitch*t advances the exit point ahead of entry
+  // Vertical loop with lateral corkscrew:
+  // - forward: radius*sin(θ) + pitch*t for forward/backward + advancement
+  // - up: radius*(1-cos(θ)) for vertical motion (always >= 0)
+  // - right: corkscrewOffset*sin(θ) separates up/down tracks laterally
   const point = new THREE.Vector3()
     .copy(entryPos)
     .addScaledVector(forward, pitch * t + radius * Math.sin(theta))
-    .addScaledVector(U0, radius * (1 - Math.cos(theta)));
+    .addScaledVector(U0, radius * (1 - Math.cos(theta)))
+    .addScaledVector(R0, corkscrewOffset * Math.sin(theta));
   
-  // Tangent: derivative of position
-  // dP/dt = forward*(pitch + radius*cos(θ)*dθ/dt) + U0*(radius*sin(θ)*dθ/dt)
+  // Tangent: derivative of position including corkscrew term
   const tangent = new THREE.Vector3()
     .copy(forward).multiplyScalar(pitch + radius * Math.cos(theta) * dThetaDt)
     .addScaledVector(U0, radius * Math.sin(theta) * dThetaDt)
+    .addScaledVector(R0, corkscrewOffset * Math.cos(theta) * dThetaDt)
     .normalize();
   
   // Up vector rotates around the RIGHT axis (perpendicular to the loop plane)

@@ -24,7 +24,7 @@ interface BarrelRollFrame {
   pitch: number;
 }
 
-// Vertical loop: track goes in a vertical circle, rider goes upside down at top
+// Vertical loop with corkscrew offset to prevent self-intersection
 function sampleVerticalLoopAnalytically(
   frame: BarrelRollFrame,
   t: number
@@ -32,19 +32,22 @@ function sampleVerticalLoopAnalytically(
   const { entryPos, forward, up: U0, right: R0, radius, pitch } = frame;
   
   const twoPi = Math.PI * 2;
+  const corkscrewOffset = radius * 0.4;
   
   const theta = twoPi * (t - Math.sin(twoPi * t) / twoPi);
   const dThetaDt = twoPi * (1 - Math.cos(twoPi * t));
   
-  // Vertical loop in forward-up plane
+  // Vertical loop with lateral corkscrew offset
   const point = new THREE.Vector3()
     .copy(entryPos)
     .addScaledVector(forward, pitch * t + radius * Math.sin(theta))
-    .addScaledVector(U0, radius * (1 - Math.cos(theta)));
+    .addScaledVector(U0, radius * (1 - Math.cos(theta)))
+    .addScaledVector(R0, corkscrewOffset * Math.sin(theta));
   
   const tangent = new THREE.Vector3()
     .copy(forward).multiplyScalar(pitch + radius * Math.cos(theta) * dThetaDt)
     .addScaledVector(U0, radius * Math.sin(theta) * dThetaDt)
+    .addScaledVector(R0, corkscrewOffset * Math.cos(theta) * dThetaDt)
     .normalize();
   
   // Up rotates around right axis - upside down at θ=π
