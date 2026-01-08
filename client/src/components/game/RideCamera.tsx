@@ -338,12 +338,17 @@ export function RideCamera() {
     
     const baseUpVector = transportedUp.current.clone();
     
-    const cameraHeight = 1.2;
+    // Higher camera position to enhance the feeling of sitting on top of the coaster
+    const cameraHeight = 2.5;
     const cameraOffset = baseUpVector.clone().multiplyScalar(cameraHeight);
     const targetCameraPos = position.clone().add(cameraOffset);
     
-    const lookDistance = 10;
-    const targetLookAt = position.clone().add(tangent.clone().multiplyScalar(lookDistance));
+    // Look further ahead and slightly down for better track visibility
+    const lookDistance = 12;
+    const lookDownOffset = -0.5; // Look slightly below horizon to see track ahead
+    const targetLookAt = position.clone()
+      .add(tangent.clone().multiplyScalar(lookDistance))
+      .add(baseUpVector.clone().multiplyScalar(lookDownOffset));
     
     previousCameraPos.current.lerp(targetCameraPos, 0.5);
     previousLookAt.current.lerp(targetLookAt, 0.5);
